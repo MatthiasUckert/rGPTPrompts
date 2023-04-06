@@ -16,7 +16,7 @@
 #' result <- get_function_code(sample_function)
 get_function_code <- function(.fun, .fun_name = NULL) {
   # Check if the input is a function
-  if (class(.fun) != "function") {
+  if (!inherits(.fun, what = "function")) {
     # Stop and display an error message if the input is not a function
     stop("Input must be a function.")
   }
@@ -38,41 +38,106 @@ get_function_code <- function(.fun, .fun_name = NULL) {
 }
 
 
-#' Generate a Formatted Message for Function Analysis
+#' gpt_function
 #'
-#' This function takes an input function and generates a formatted message with the input function
-#' and instructions for analyzing it.
+#' This function provides a standardized interface that returns a prompt that can be used for GPT. It takes a function as input and generates a\cr
+#' standardized prompt based on the user's selected question about the function.
 #'
-#' @param .fun A function to be analyzed.
+#' @param .fun A function to be analyzed. The input function should be a valid R function.
+#' @param .prompt A character vector specifying the type of question about the input function. The available options are:\cr
+#'   - "understand": Ask clarifying questions to understand the function in its entirety.\cr
+#'   - "document": Write clarifying comments above every single line of the function.\cr
+#'   - "reference": Specify the package of every single function call within the function.\cr
+#'   - "roxygen": Provide a filled-in Roxygen Skeleton (see roxygen2 package).\cr
+#'   - "unittest": Write a unit test for the function.\cr
+#'   - "suggest": Give suggestions on how to improve the function.\cr
+#' @return A character string containing the generated prompt based on the input function and the selected question type.
 #'
-#' @return No return value, the function prints a formatted message to the console.
 #' @export
 #'
 #' @examples
-#' example_function <- function(x) { return(x * 2) }
-#' gpt_comment_function(example_function)
-gpt_comment_function <- function(.fun) {
+#' example_function <- function(x) {
+#'   return(x * 2)
+#' }
+#'
+#' # Generate a prompt for understanding the example_function
+#' gpt_function(example_function, .prompt = "understand")
+#'
+#' # Generate a prompt for documenting the example_function
+#' gpt_function(example_function, .prompt = "document")
+#'
+#' # Generate a prompt for referencing the example_function
+#' gpt_function(example_function, .prompt = "reference")
+#'
+#' # Generate a Roxygen skeleton for the example_function
+#' gpt_function(example_function, .prompt = "roxygen")
+#'
+#' # Generate a prompt for writing a unit test for the example_function
+#' gpt_function(example_function, .prompt = "unittest")
+#'
+#' # Generate a prompt for suggesting improvements for the example_function
+#' gpt_function(example_function, .prompt = "suggest")
+gpt_function <- function(.fun, .prompt = c("understand", "document", "reference", "roxygen", "unittest", "suggest")) {
   # Get the name of the input function
   func_name <- deparse(substitute(.fun))
 
-  # Concatenate and display the formatted message with the function and instructions
-  cat(paste0(
-    "Your task is to analyze the following function:\n\n",
+  . <- NULL
+
+  task_desc_ <- c(
+    "Your task is to analyze the following function.",
+    "Make sure you understand its entire structure and use case.",
+    "Function:"
+    ) %>% paste(., collapse = "\n")
+
+  prompts_ <- list()
+
+  prompts_[["understand"]] <- c(
+    "Ask me clarifying question so that you understand the function in its entirety",
+    "When asking me those questions, also give me instructions on how I should answer those questions",
+    "After receiving my answers, you can reiterate this step as long as there are no queston remaining",
+    "Never assume that you already know the answers! Always wait for my input!",
+    "Only after I clarified those open points you continue with the remaining points."
+  ) %>% paste(., collapse = "\n")
+
+  prompts_[["document"]] <- c(
+    "Write a clarifying comment above every single line of this function.",
+    "(You should put the comments above every single line, not doing so results in a failure of the task!).",
+    "You are NOT ALLOWED to change anything in this function, except that you put a newline to write you comments."
+  ) %>% paste(., collapse = "\n")
+
+  prompts_[["reference"]] <- c(
+    "Every single function call within the function should have the package specified.",
+    "If the package is not specified you have to add it before the function call.",
+    "(Except the function is called from base R)"
+  ) %>% paste(., collapse = "\n")
+
+  prompts_[["roxygen"]] <- c(
+    "Provide a filled in Roxygen Skeleton (see roxygen2 package)"
+  )
+
+  prompts_[["unittest"]] <- c(
+    "Write a unit test for this function"
+  )
+
+  prompts_[["suggest"]] <- c(
+    "Give me suggestions on how to improve this function.",
+    "Those improvements include:",
+    "- Making this function more performant (e.g., by using more efficient packages)",
+    "- Reducing the code complexity",
+    "- Making the function interface more accesible",
+    "- ... or anything else you can come up with",
+    "You are supposed to rewrite the complete functions and explain you suggestions in in-code comments."
+  ) %>% paste(., collapse = "\n")
+
+
+  prompts_ <- paste(prompts_[.prompt], collapse = "\n\n")
+
+
+  paste(
+    task_desc_,
     get_function_code(.fun, func_name),
-    "\n\nSubsequently you should do the following:
-    1. Ask me any clarifying question you have about the functionality of this function.
-       Only after I clarified those open points you continue with points 2-4.
-       (Never assume that you already know the answers! Always wait for my input)
-    2. Every single function call within the function should have the package specified.
-       If the package is not specified you have to add it before the function call.
-       (Except the function is called from base R)
-       Subsequently, you should comment every single line of this function
-       (You should put the comments above the line).
-    3. Provide a Roxygen Skeleton of this function.
-    4. Write a unit test for this function"
-  ))
+    prompts_,
+    sep = "\n\n"
+  ) %>% cat()
 
 }
-
-
-gpt_comment_function(gpt_comment_function)
