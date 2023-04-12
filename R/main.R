@@ -138,3 +138,59 @@ gpt_function <- function(.fun, .prompt = c("understand", "document", "reference"
   ) %>% cat()
 
 }
+
+
+#' Extract functions and roxygen skeletons from R scripts
+#'
+#' This function takes a list of R scripts and extracts the functions and associated roxygen skeletons.
+#' It returns a tibble with the extracted information for each function, including its message number,
+#' the script name, the line number, the function name, the roxygen skeleton,
+#' the number of tokens (words) in the roxygen skeleton, and the number of characters in the roxygen skeleton.
+#'
+#' @param .paths A character vector of file paths to the R scripts containing the functions.
+#' @param .max_token An integer specifying the maximum number of tokens (words) per roxygen skeleton.
+#'   The default value is 2000.
+#' @return A tibble with the following columns:
+#' \describe{
+#'   \item{msg_no}{A numeric vector indicating the message number of each roxygen skeleton.}
+#'   \item{script}{A character vector indicating the name of the script that the function was extracted from.}
+#'   \item{no}{An integer vector indicating the line number of the function within the script.}
+#'   \item{fun_name}{A character vector indicating the name of the function.}
+#'   \item{fun_text}{A character vector indicating the roxygen skeleton for the function.}
+#'   \item{n_token}{An integer vector indicating the number of tokens (words) in the roxygen skeleton.}
+#'   \item{n_chars}{An integer vector indicating the number of characters in the roxygen skeleton.}
+#' }
+#' @examples
+#' # Extract functions and roxygen skeletons from two R scripts
+#' extract_functions(c("path/to/script1.R", "path/to/script2.R"))
+#' @export
+extract_functions <- function(.paths, .max_token = 2000) {
+
+  tab_ <- purrr::map_dfr(
+    .x = .paths,
+    .f = ~ tibble::tibble(line = readLines(.x)) %>%
+      dplyr::mutate(
+        no = as.integer(startsWith(line, "#'") & !startsWith(dplyr::lag(line), "#'")),
+        no = dplyr::if_else(is.na(no), 1L, no),
+        no = cumsum(no)
+      ) %>%
+      dplyr::group_by(no) %>%
+      dplyr::summarise(fun = paste(line, collapse = "\n")),
+    .id = "script"
+  ) %>%
+    dplyr::mutate(
+      fun = paste("Function:", stringi::stri_pad_left(dplyr::row_number(), 3, 0), paste(rep("-", 25), collapse = ""), "\n", fun),
+      n_token = stringi::stri_count_words(fun),
+      n_chars = nchar(fun)
+    ) %>%
+    dplyr::mutate(
+      fun_name = stringi::stri_extract_first_regex(fun, ".+?<-\\s+?function\\(.*?\\)"),
+      fun_name = trimws(stringi::stri_replace_first_regex(fun_name, "<-\\s+?function\\(.*?\\)", "")),
+    ) %>%
+    dplyr::mutate(
+      msg_no = ceiling(cumsum(n_token) / .max_token)
+    ) %>%
+    dplyr::select(msg_no, script, no, fun_name, fun_text = fun, n_token, n_chars)
+
+  return(tab_)
+}
