@@ -194,7 +194,7 @@ extract_functions <- function(.paths, .max_token = 2000) {
       name = dplyr::if_else(
         is.na(name), stringi::stri_extract_last_regex(text, '".+?"$'), name
         ),
-      n_token = stringi::stri_count_words(text),
+      n_token = stringi::stri_count_regex(text, "[[:punct:]]|[[:blank:]]|[[:space:]]"),
       n_chars = nchar(text)
     ) %>%
     dplyr::group_by(type) %>%
@@ -225,7 +225,7 @@ extract_functions <- function(.paths, .max_token = 2000) {
 #'
 #' @return NULL. The function outputs the generated prompt either to a text file or the console, depending on the value of the .output parameter.
 #' @export
-gpt_package_prompt <- function(.dir, .max_token = 2000, .output = c("txt", "console")) {
+gpt_package_prompt <- function(.dir, .max_token = 4000, .output = c("txt", "console")) {
   # DEBUG -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
   if (is.null(sys.calls())) {
     # .dir <- "../rGPTPrompts/"
@@ -266,15 +266,15 @@ gpt_package_prompt <- function(.dir, .max_token = 2000, .output = c("txt", "cons
       "The complete Package consist of {nrow(fun_)} functions and {nrow(dat_)} datasets.",
       "Your task is to analyze all functions and datasets, especially in regards to their interdependencies, functionalities, and purpose",
       "Due to character limitations I will provide you with {max(fun_$msg_no)} messages for the function and {max(dat_$msg_no)} messages for the datasets.",
-      "Until you received all functions ({nrow(fun_)} function in {max(fun_$msg_no)}), and datasets ({nrow(dat_)} function in {max(dat_$msg_no)}), you only confirm the prompt, with providong me a list of the functions or datasets as an answer",
+      "Until you received all functions ({nrow(fun_)} function in {max(fun_$msg_no)} messages), and datasets ({nrow(dat_)} datasets in {max(dat_$msg_no)} messages), you only confirm the prompt, with providong me a list of the functions or datasets as an answer",
       "When you have received all the functions and datasets you confirm this with the message: 'I received all information', and than you list all functions and datasets again.",
       "Only after I received this message from you, I will give you more task related to the package.",
-      "Is the task clear or do you have any further questions? (Incase it is clear, please provide me with a quick summary of the task)",
+      "Is the task clear or do you have any further questions? (In case it is clear, please provide me with a quick summary of the task)",
       sep = "\n"
     )
   )
 
-  txt_ <- paste(prompt_, txt_, collapse = "\n\n\n\n\n\n\n")
+  txt_ <- paste(prompt_, "\n\n", txt_, collapse = "\n\n\n\n\n\n\n")
 
   if (output_ == "txt") {
     tmp_ <- tempfile(fileext = ".txt")
@@ -285,4 +285,4 @@ gpt_package_prompt <- function(.dir, .max_token = 2000, .output = c("txt", "cons
   }
 }
 
-# gpt_package_prompt("../rMatching2/")
+gpt_package_prompt("../rMatching2/", 4000)
