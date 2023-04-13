@@ -4,7 +4,7 @@
 #' An optional argument allows you to provide the function name directly.
 #'
 #' @param .fun A function for which the name and code should be returned.
-#' @param .fun_name (Optional) A character string representing the name of the input function.
+#' @param .name (Optional) A character string representing the name of the input function.
 #'
 #' @return A character string containing the function name and code.
 #' @export
@@ -14,7 +14,7 @@
 #'   return(x * 2)
 #' }
 #' result <- get_function_code(sample_function)
-get_function_code <- function(.fun, .fun_name = NULL) {
+get_function_code <- function(.fun, .name = NULL) {
   # Check if the input is a function
   if (!inherits(.fun, what = "function")) {
     # Stop and display an error message if the input is not a function
@@ -22,12 +22,12 @@ get_function_code <- function(.fun, .fun_name = NULL) {
   }
 
   # Check if the function name is provided
-  if (is.null(.fun_name)) {
+  if (is.null(.name)) {
     # If the function name is not provided, extract it from the input
     func_name <- deparse(substitute(.fun))
   } else {
     # If the function name is provided, use it
-    func_name <- .fun_name
+    func_name <- .name
   }
 
   # Get the code of the input function as a character string
@@ -152,22 +152,31 @@ gpt_function <- function(.fun, .prompt = c("understand", "document", "reference"
 #'   The default value is 2000.
 #' @return A tibble with the following columns:
 #' \describe{
+#'   \item{type}{A character vector indicating if the text is a function or dataset text.}
 #'   \item{msg_no}{A numeric vector indicating the message number of each roxygen skeleton.}
 #'   \item{script}{A character vector indicating the name of the script that the function was extracted from.}
 #'   \item{no}{An integer vector indicating the line number of the function within the script.}
-#'   \item{fun_name}{A character vector indicating the name of the function.}
-#'   \item{fun_text}{A character vector indicating the roxygen skeleton for the function.}
+#'   \item{name}{A character vector indicating the name of the function.}
+#'   \item{text}{A character vector indicating the roxygen skeleton for the function.}
 #'   \item{n_token}{An integer vector indicating the number of tokens (words) in the roxygen skeleton.}
 #'   \item{n_chars}{An integer vector indicating the number of characters in the roxygen skeleton.}
 #' }
-#' @examples
-#' # Extract functions and roxygen skeletons from two R scripts
-#' extract_functions(c("path/to/script1.R", "path/to/script2.R"))
 #' @export
 extract_functions <- function(.paths, .max_token = 2000) {
 
+  # DEBUG -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+  if (is.null(sys.calls())) {
+    # .paths <- "R/main.R"
+    # .max_token = 2000
+    # .output = c("txt", "console")
+    cat("DEBUGING MODE: This Message should not appear when calling the function")
+  }
+
+  # Assign NULL to Global Variables -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- ---
+  fun <- name <- n_token <- msg_no <- script <- no <-  n_chars <- text <- type <- tmp <- NULL
+
   tab_ <- purrr::map_dfr(
-    .x = .paths,
+    .x = purrr::set_names(.paths, basename(.paths)),
     .f = ~ tibble::tibble(line = readLines(.x)) %>%
       dplyr::mutate(
         no = as.integer(startsWith(line, "#'") & !startsWith(dplyr::lag(line), "#'")),
@@ -175,22 +184,104 @@ extract_functions <- function(.paths, .max_token = 2000) {
         no = cumsum(no)
       ) %>%
       dplyr::group_by(no) %>%
-      dplyr::summarise(fun = paste(line, collapse = "\n")),
+      dplyr::summarise(text = paste(line, collapse = "\n")),
     .id = "script"
   ) %>%
+    dplyr::filter(!no == 0) %>%
     dplyr::mutate(
-      fun = paste("Function:", stringi::stri_pad_left(dplyr::row_number(), 3, 0), paste(rep("-", 25), collapse = ""), "\n", fun),
-      n_token = stringi::stri_count_words(fun),
-      n_chars = nchar(fun)
+      name = stringi::stri_extract_last_regex(text, "(?<!#\\s').+?<-\\s+?function\\(.*?\\)"),
+      name = trimws(stringi::stri_replace_first_regex(name, "<-\\s+?function\\(.*?\\)", "")),
+      type = dplyr::if_else(!is.na(name), "Function", "Dataset"),
+      name = dplyr::if_else(
+        is.na(name), stringi::stri_extract_last_regex(text, '".+?"$'), name
+        ),
+      n_token = stringi::stri_count_words(text),
+      n_chars = nchar(text)
     ) %>%
+    dplyr::group_by(type) %>%
     dplyr::mutate(
-      fun_name = stringi::stri_extract_first_regex(fun, ".+?<-\\s+?function\\(.*?\\)"),
-      fun_name = trimws(stringi::stri_replace_first_regex(fun_name, "<-\\s+?function\\(.*?\\)", "")),
+      text = paste(
+        glue::glue("{type}:"),
+        stringi::stri_pad_left(dplyr::row_number(), 3, 0), paste(rep("-", 25), collapse = ""),
+        "\n", fun
+        ),
     ) %>%
     dplyr::mutate(
       msg_no = ceiling(cumsum(n_token) / .max_token)
     ) %>%
-    dplyr::select(msg_no, script, no, fun_name, fun_text = fun, n_token, n_chars)
+    dplyr::ungroup() %>%
+    dplyr::select(type, msg_no, script, no, name, text, n_token, n_chars)
 
   return(tab_)
+}
+
+#' Generate a GPT-4 prompt for analyzing an R package
+#'
+#' This function generates a GPT-4 prompt for analyzing an R package, including its functions and datasets.
+#' The prompt can be output to the console or a text file.
+#'
+#' @param .dir The directory of the R package.
+#' @param .max_token Maximum tokens per message (integer).
+#' @param .output Output format: "txt" (text file) or "console" (console output).
+#'
+#' @return NULL. The function outputs the generated prompt either to a text file or the console, depending on the value of the .output parameter.
+#' @export
+gpt_package_prompt <- function(.dir, .max_token = 2000, .output = c("txt", "console")) {
+  # DEBUG -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+  if (is.null(sys.calls())) {
+    # .dir <- "../rGPTPrompts/"
+    # .max_token = 2000
+    # .output = c("txt", "console")
+    cat("DEBUGING MODE: This Message should not appear when calling the function")
+  }
+
+  # Assign NULL to Global Variables -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- ---
+  msg_no <- type <- tmp <- text <- msg_no <- NULL
+
+
+  output_ <- match.arg(.output, c("txt", "console"))
+
+  name_ <- basename(.dir)
+  fils_ <- list.files(file.path(.dir, "R"), full.names = TRUE)
+  .paths <- fils_ <- fils_[!basename(fils_) == "utils-pipe.R"]
+
+  tab_ <- extract_functions(fils_, .max_token = 2000)
+  fun_ <- dplyr::filter(tab_, type == "Function")
+  dat_ <- dplyr::filter(tab_, type == "Dataset")
+
+
+  txt_ <- dplyr::bind_rows(fun_, dat_) %>%
+    dplyr::group_by(msg_no) %>%
+    dplyr::summarise(text = paste(text, collapse = "\n")) %>%
+    dplyr::mutate(
+      tmp = paste0("MESSAGE: ", dplyr::row_number(), paste(rep("=", 100), collapse = "")),
+      text = paste0(tmp, "\n\n\n", text)
+    ) %>%
+    dplyr::summarise(text = paste(text, collapse = "\n")) %>%
+    dplyr::pull(text)
+
+
+  prompt_ <- glue::glue(
+    paste(
+      "In the following your task is to Analyze my R Package with the title '{name_}'.",
+      "The complete Package consist of {nrow(fun_)} functions and {nrow(dat_)} datasets.",
+      "Your task is to analyze all functions and datasets, especially in regards to their interdependencies, functionalities, and purpose",
+      "Due to character limitations I will provide you with {max(fun_$msg_no)} messages for the function and {max(dat_$msg_no)} messages for the datasets.",
+      "Until you received all functions ({nrow(fun_)} function in {max(fun_$msg_no)}), and datasets ({nrow(dat_)} function in {max(dat_$msg_no)}), you only confirm the prompt, with providong me a list of the functions or datasets as an answer",
+      "When you have received all the functions and datasets you confirm this with the message: 'I received all information', and than you list all functions and datasets again.",
+      "Only after I received this message from you, I will give you more task related to the package.",
+      "Is the task clear or do you have any further questions? (Incase it is clear, please provide me with a quick summary of the task)",
+      sep = "\n"
+    )
+  )
+
+  txt_ <- paste(prompt_, txt_, collapse = "\n\n\n\n\n\n\n")
+
+  if (output_ == "txt") {
+    tmp_ <- tempfile(fileext = ".txt")
+    write(txt_, tmp_)
+    utils::browseURL(tmp_)
+  } else {
+    cat(txt_)
+  }
 }

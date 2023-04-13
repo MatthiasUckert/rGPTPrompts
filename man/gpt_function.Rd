@@ -35,10 +35,7 @@ example_function <- function(x) {
 }
 
 # Generate a prompt for understanding the example_function
-gpt_function(example_function, .prompt = "understand")
-
-# Generate a prompt for documenting the example_function
-gpt_function(example_function, .prompt = "document")
+gpt_function(example_function, .prompt = c("understand", "document"))
 
 # Generate a prompt for referencing the example_function
 gpt_function(example_function, .prompt = "reference")

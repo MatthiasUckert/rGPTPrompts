@@ -4,12 +4,12 @@
 \alias{get_function_code}
 \title{Get Function Name and Code as a Character String}
 \usage{
-get_function_code(.fun, .fun_name = NULL)
+get_function_code(.fun, .name = NULL)
 }
 \arguments{
 \item{.fun}{A function for which the name and code should be returned.}
 
-\item{.fun_name}{(Optional) A character string representing the name of the input function.}
+\item{.name}{(Optional) A character string representing the name of the input function.}
 }
 \value{
 A character string containing the function name and code.
