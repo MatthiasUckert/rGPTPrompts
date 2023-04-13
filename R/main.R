@@ -168,7 +168,6 @@ extract_functions <- function(.paths, .max_token = 2000) {
   if (is.null(sys.calls())) {
     # .paths <- "R/main.R"
     # .max_token = 2000
-    # .output = c("txt", "console")
     cat("DEBUGING MODE: This Message should not appear when calling the function")
   }
 
@@ -203,7 +202,7 @@ extract_functions <- function(.paths, .max_token = 2000) {
       text = paste(
         glue::glue("{type}:"),
         stringi::stri_pad_left(dplyr::row_number(), 3, 0), paste(rep("-", 25), collapse = ""),
-        "\n", fun
+        "\n", text
         ),
     ) %>%
     dplyr::mutate(
@@ -285,3 +284,5 @@ gpt_package_prompt <- function(.dir, .max_token = 2000, .output = c("txt", "cons
     cat(txt_)
   }
 }
+
+# gpt_package_prompt("../rMatching2/")
