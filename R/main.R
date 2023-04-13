@@ -284,5 +284,3 @@ gpt_package_prompt <- function(.dir, .max_token = 4000, .output = c("txt", "cons
     cat(txt_)
   }
 }
-
-gpt_package_prompt("../rMatching2/", 4000)
